@@ -8,16 +8,22 @@ import re
 Status = namedtuple("Status", "account_val buying_power cash annual_return")
 Portfolio = namedtuple("Portfolio", "bought options shorted")
 Security = namedtuple("Security", "symbol description quantity purchase_price current_price current_value")
-Trade = namedtuple("Trade", "date_time description symbol quantity")
+Trade = namedtuple("Trade", "order_number action date_time description symbol quantity")
 
 
 class LoginError(Exception):
-    """Exception raised for errors logging into Investopedia
-
+    """
+    Exception raised for errors logging into Investopedia
     """
     def __init__(self):
         super().__init__("Login Error: Invalid Username or Password")
 
+class TradeCancelError(Exception):
+    """ 
+    Exception raised when trying to cancel a trade that isn't open on this account
+    """
+    def __init__(self):
+        super().__init__("Trade Cancel Error: Invalid Trade ID")
 
 class Action(Enum):
     buy = 1
@@ -211,15 +217,17 @@ class Account:
         open_trades_raw = []
         for open_trade in open_trades_list:
             trade_info_list = open_trade.find_all("td")
-            open_trades_raw.append([i.getText() for i in trade_info_list][2:6])
+            open_trades_raw.append([i.getText() for i in trade_info_list][:6])
 
         open_trades = []
         for raw_data in open_trades_raw:
             trade_obj = Trade(
-                date_time=raw_data[0],
-                description=raw_data[1],
-                symbol=raw_data[2],
-                quantity=int(raw_data[3])
+                order_number = raw_data[0],
+                action = raw_data[1],
+                date_time=raw_data[2],
+                description=raw_data[3],
+                symbol=raw_data[4],
+                quantity=int(raw_data[5])
             )
             open_trades.append(trade_obj)
 
@@ -327,6 +335,21 @@ class Account:
 
         return True
 
+    def cancel_trade(self, tradeId):
+        """
+        Cancels trade based on trade id
+        """
+        # Get list of Open cancellable trades
+        cancellable_trades = [trades[0] for trades in self.get_open_trades() if trades[1] == 'Cancel']
+
+        # Raise Error if tradeId is invalid
+        if tradeId not in cancellable_trades:
+            raise TradeCancelError
+        
+        #Execute trade cancel
+        self.fetch("/simulator/trade/showopentrades.aspx?CTId={}&Source=Stock".format(tradeId))
+        
+        return True
 
 def get_quote(symbol):
     BASE_URL = 'http://www.investopedia.com'
